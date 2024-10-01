@@ -28,10 +28,5 @@
                 <service name="co.hotwax.inventory.InventoryServices.get#ShopifyShippingRates"/>
             </method>
         </resource>
-        <resource name="InventorRoutingRule">
-            <method type="post">
-                <service name="co.hotwax.inventory.InventoryServices.run#InventoryRoutingRule"/>
-            </method>
-        </resource>
     </resource>
 </resource>
