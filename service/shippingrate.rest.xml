@@ -25,7 +25,7 @@
     <resource name="carrier" require-authentication="anonymous-all">
         <resource name="rate">
             <method type="post">
-                <service name="co.hotwax.inventory.InventoryServices.get#ShopifyShippingRates"/>
+                <service name="co.hotwax.shopify.inventory.InventoryServices.get#ShopifyShippingRates"/>
             </method>
         </resource>
     </resource>
