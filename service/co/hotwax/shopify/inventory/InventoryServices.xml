@@ -144,14 +144,30 @@
                 <set field="longitude" from="rate?.destination?.longitude"/>
                 <set field="latitude" from="rate?.destination?.latitude"/>
             <else-if condition="rate?.destination?.country &amp;&amp; rate?.destination?.postal_code">
-                <service-call name="co.hotwax.shopify.inventory.InventoryServices.get#GeoPointForPostalCode"
-                        in-map="[countryCode: rate?.destination?.country, postalCode: rate?.destination?.postal_code]"
-                        ignore-error="true" out-map="geoCodeResult" transaction="force-new"/>
+                <script>
+                    String cacheKey = (rate.destination.country).concat("_").concat(rate.destination.postal_code);
+                    def geoPointCache = ec.cache.getCache("postal.code.geo.pointCache");
+                    def cacheGeoPoint = geoPointCache.get(cacheKey)
+                </script>
+                <if condition="cacheGeoPoint">
+                    <set field="longitude" from="cacheGeoPoint?.longitude"/>
+                    <set field="latitude" from="cacheGeoPoint?.latitude"/>
+                 <else>
+                     <service-call name="co.hotwax.shopify.inventory.InventoryServices.get#GeoPointForPostalCode"
+                                   in-map="[countryCode: rate?.destination?.country, postalCode: rate?.destination?.postal_code]"
+                                   ignore-error="true" out-map="geoCodeResult" transaction="force-new"/>
 
-                <script>ec.message.clearAll()</script>
-                <set field="geoPoint" from="geoCodeResult?.geoPoint" type="NewMap"/>
-                <set field="longitude" from="geoPoint?.longitude"/>
-                <set field="latitude" from="geoPoint?.latitude"/>
+                     <script>ec.message.clearAll()</script>
+                     <set field="geoPoint" from="geoCodeResult?.geoPoint" type="NewMap"/>
+                     <if condition="geoPoint">
+                         <set field="longitude" from="geoPoint?.longitude"/>
+                         <set field="latitude" from="geoPoint?.latitude"/>
+                         <script>
+                             geoPointCache.put(geoCodeResult.cacheKey, geoPoint);
+                         </script>
+                     </if>
+                 </else>
+                </if>
             </else-if>
             </if>
             <if condition="!(longitude &amp;&amp; latitude)">
