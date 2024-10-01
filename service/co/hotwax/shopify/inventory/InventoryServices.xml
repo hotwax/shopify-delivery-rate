@@ -1,0 +1,548 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one
+    or more contributor license agreements.  See the NOTICE file
+    distributed with this work for additional information
+    regarding copyright ownership.  The ASF licenses this file
+    to you under the Apache License, Version 2.0 (the
+    "License"); you may not use this file except in compliance
+    with the License.  You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing,
+    software distributed under the License is distributed on an
+    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+    KIND, either express or implied.  See the License for the
+    specific language governing permissions and limitations
+    under the License.
+-->
+
+<services xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://moqui.org/xsd/service-definition-3.xsd">
+<!--    https://shopify.dev/docs/api/admin-rest/2024-07/resources/carrierservice#get-carrier-services-->
+    <service verb="get" noun="ShopifyShippingRates" authenticate="anonymous-view">
+        <description>
+            A carrier service (also known as a carrier calculated service or shipping service) provides real-time shipping rates to Shopify.
+            The term carrier is often used interchangeably with the terms shipping company and rate provider.
+        </description>
+        <in-parameters>
+            <parameter name="routingGroupId" required="true"/>
+            <parameter name="carrierPartyId" default-value="_NA_"/>
+            <parameter name="timeZone"/>
+            <parameter name="rate" type="Map">
+                <parameter name="origin" type="Map">
+                    <parameter name="country"/>
+                    <parameter name="postal_code"/>
+                    <parameter name="province"/>
+                    <parameter name="city"/>
+                    <parameter name="name"/>
+                    <parameter name="latitude"/>
+                    <parameter name="longitude"/>
+                    <parameter name="address1"/>
+                    <parameter name="address2"/>
+                    <parameter name="address3"/>
+                    <parameter name="phone"/>
+                    <parameter name="fax"/>
+                    <parameter name="email"/>
+                    <parameter name="address_type"/>
+                    <parameter name="company_name"/>
+                </parameter>
+                <parameter name="destination" type="Map" required="true">
+                    <parameter name="country"/>
+                    <parameter name="postal_code"/>
+                    <parameter name="province"/>
+                    <parameter name="city"/>
+                    <parameter name="name"/>
+                    <parameter name="latitude"/>
+                    <parameter name="longitude"/>
+                    <parameter name="address1"/>
+                    <parameter name="address2"/>
+                    <parameter name="address3"/>
+                    <parameter name="phone"/>
+                    <parameter name="fax"/>
+                    <parameter name="email"/>
+                    <parameter name="address_type"/>
+                    <parameter name="company_name"/>
+                </parameter>
+                <parameter name="items" type="List" required="true">
+                    <parameter name="item" type="Map">
+                        <parameter name="name"/>
+                        <parameter name="sku"/>
+                        <parameter name="quantity" type="BigDecimal"/>
+                        <parameter name="grams" type="BigDecimal"/>
+                        <parameter name="price" type="BigDecimal"/>
+                        <parameter name="vendor"/>
+                        <parameter name="requires_shipping" type="Boolean"/>
+                        <parameter name="taxable" type="Boolean"/>
+                        <parameter name="fulfillment_service"/>
+                        <parameter name="properties" type="List">
+                            <parameter name="property" type="Map"/>
+                        </parameter>
+                        <parameter name="product_id"/>
+                        <parameter name="variant_id"/>
+                    </parameter>
+                </parameter>
+                <parameter name="currency"/>
+                <parameter name="locale"/>
+            </parameter>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="rates" type="List">
+                <parameter name="rate" type="Map">
+                    <parameter name="service_name" required="true">
+                        <description>The name of the rate, which customers see at checkout. For example: Expedited Mail.</description>
+                    </parameter>
+                    <parameter name="description" required="true">
+                        <description>A description of the rate, which customers see at checkout. For example: Includes tracking and insurance.</description>
+                    </parameter>
+                    <parameter name="service_code" required="true">
+                        <description>A unique code associated with the rate. For example: expedited_mail.</description>
+                    </parameter>
+                    <parameter name="currency" required="true">
+                        <description>The currency of the shipping rate.</description>
+                    </parameter>
+                    <parameter name="total_price" required="true">
+                        <description>The total price expressed in subunits. If the currency doesn't use subunits, then the value must be multiplied by 100. For example: `"total_price": 500` for 5.00 CAD, `"total_price": 100000` for 1000 JPY.</description>
+                    </parameter>
+                    <parameter name="phone_required">
+                        <description>Whether the customer must provide a phone number at checkout.</description>
+                    </parameter>
+                    <parameter name="min_delivery_date">
+                        <description>The earliest delivery date for the displayed rate.</description>
+                    </parameter>
+                    <parameter name="max_delivery_date">
+                        <description>The latest delivery date for the displayed rate to still be valid.</description>
+                    </parameter>
+                </parameter>
+            </parameter>
+        </out-parameters>
+        <actions>
+            <set field="rates" from="[]"/>
+            <!-- validate the routing group and product store association -->
+            <entity-find-one entity-name="co.hotwax.order.routing.OrderRoutingGroup" value-field="orderRoutingGroup" cache="true"/>
+
+            <if condition="!orderRoutingGroup">
+                <return error="true" message="Order routing group not found for ${routingGroupId}"/>
+            </if>
+            <if condition="!orderRoutingGroup.productStoreId">
+                <return error="true" message="No productStore associated with routing group ${orderRoutingGroup.groupName} [${routingGroupId}]"/>
+            </if>
+
+            <!-- Get the all active routing for order routing group -->
+            <entity-find entity-name="co.hotwax.order.routing.OrderRouting" list="orderRoutings" cache="true">
+                <econditions>
+                    <econdition field-name="routingGroupId" from="routingGroupId"/>
+                    <econdition field-name="statusId" value="ROUTING_ACTIVE"/>
+                </econditions>
+                <order-by field-name="sequenceNum"/>
+            </entity-find>
+            <if condition="!orderRoutings">
+                <return type="warning" message="No order routing configuration found for the specified routing group ${orderRoutingGroup.groupName?:''} [${routingGroupId}]."/>
+            </if>
+            <log message="Running inventory routing for ${orderRoutingGroup.groupName} [${routingGroupId}] routing group."/>
+            <!--TODO: Get the lat/long from postal code solr if not found in destination address-->
+            <set field="longitude" from="rate?.destination?.longitude"/>
+            <set field="latitude" from="rate?.destination?.latitude"/>
+            <set field="items" from="rate?.items" type="List"/>
+            <script><![CDATA[
+                def bopisMethods = items.collect { item ->
+                    if (item.properties?._pickupstore) {  // Check if _pickupstore exists in properties
+                        return item.properties?.'Delivery Method'  // Collect Delivery Method if condition is met
+                    }
+                }.findAll { it } as Set // Filter out any null or empty values and return as a Set
+
+                def deliveryItems = items.findAll { item ->
+                    !(item.properties && item.properties._pickupstore)
+                }
+                // Ensure that if 'quantity' is null, it's treated as 0
+                cartTotalQuantity = items.sum { item -> item.quantity ?: 0}
+            ]]></script>
+            <set field="pickupDescription" from="bopisMethods?.join(',')"/>
+            <!-- If there is no delivery items -->
+            <if condition="bopisMethods &amp;&amp; !deliveryItems">
+                <set field="rates" from="[
+                        [service_name:'In-Store Pick Up',
+                        service_code: 'STOREPICKUP',
+                        total_price: '00',
+                        description: pickupDescription,
+                        currency: rate.currency]]"/>
+                <else>
+                    <entity-find entity-name="co.hotwax.product.store.ProductStoreShipmentMethView" cache="true" distinct="true" list="shipmentMethodTypes">
+                        <econdition field-name="productStoreId" from="orderRoutingGroup.productStoreId"/>
+                        <econdition field-name="partyId" from="carrierPartyId"/>
+                        <econditions>
+
+                            <econdition field-name="shipmentMethodTypeId" operator="not-equals" value="STOREPICKUP"/>
+                            <econditions combine="or">
+                                <econdition field-name="parentTypeId" operator="not-equals" value="STOREPICKUP"/>
+                                <econdition field-name="parentTypeId" operator="is-null"/>
+                            </econditions>
+                        </econditions>
+                        <econdition field-name="roleTypeId" value="CARRIER"/>
+                        <date-filter/>
+                        <select-field field-name="shipmentMethodTypeId"/>
+                    </entity-find>
+                    <iterate list="shipmentMethodTypes" entry="shipmentMethodType">
+                        <set field="slaIds" from="[shipmentMethodType.shipmentMethodTypeId]" type="List"/>
+                        <if condition="shipmentMethodType.parentTypeId">
+                            <script>slaIds.add(shipmentMethodType.parentTypeId)</script>
+                        </if>
+                        <iterate list="orderRoutings" entry="orderRouting">
+                            <entity-find entity-name="co.hotwax.order.routing.OrderFilterCondition" list="orderFilterConditions" cache="true">
+                                <econdition field-name="orderRoutingId" from="orderRouting.orderRoutingId"/>
+                                <econdition field-name="conditionTypeEnumId" value="ENTCT_FILTER"/>
+                                <econdition field-name="fieldName" value="shipmentMethodTypeId"/>
+                            </entity-find>
+                            <set field="orderFilterCondition" from="orderFilterConditions[0]"/>
+                            <set field="conditionSLAs" from="[orderFilterCondition?.fieldValue]" type="List"/>
+                            <if condition="!(!conditionSLAs || !conditionSLAs.intersect(slaIds).isEmpty())">
+                                <continue/>
+                            </if>
+                            <service-call name="co.hotwax.shopify.inventory.InventoryServices.run#InventoryRouting"
+                                    in-map="[orderRoutingId: orderRouting.orderRoutingId, items: deliveryItems, longitude: longitude,
+                                            latitude: latitude]"
+                                    transaction="force-new" ignore-error="true" out-map="inventoryRoutingResult"/>
+                            <set field="assignedItems" from="inventoryRoutingResult?.assignedItems" type="List"/>
+                            <!--If inventory found for all items do not run next routing for SLA -->
+                            <if condition="inventoryRoutingResult?.assignedItems">
+                                <break/>
+                            </if>
+                        </iterate>
+                        <service-call name="co.hotwax.shopify.inventory.InventoryServices.prepare#ShipmentMethodRates"
+                                in-map="[mixedCart: bopisMethods?true:false, shipmentMethodTypeId:shipmentMethodType.shipmentMethodTypeId,
+                                     assignedItems: assignedItems, currency: rate.currency, mixedCartSuffix: pickupDescription, productStoreId: orderRoutingGroup.productStoreId, timeZone: timeZone]"
+                                out-map="rateResult" />
+                        <if condition="rateResult.rate">
+                            <script>rates.add(rateResult.rate)</script>
+                        </if>
+                    </iterate>
+                </else>
+            </if>
+        </actions>
+    </service>
+    <service verb="run" noun="InventoryRouting">
+        <description></description>
+        <in-parameters>
+            <parameter name="orderRoutingId" required="true"/>
+            <parameter name="items" type="List" required="true"/>
+            <parameter name="latitude"/>
+            <parameter name="longitude"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="assignedItems" type="List"/>
+            <parameter name="runNextRouting" type="Boolean"/>
+        </out-parameters>
+        <actions>
+            <set field="runNextRouting" value="true" type="Boolean"/>
+            <entity-find-one entity-name="co.hotwax.order.routing.OrderRouting" value-field="orderRouting" cache="true"/>
+            <if condition="!orderRouting">
+                <return error="true" message="No order routing found for id ${orderRoutingId}"/>
+            </if>
+            <if condition="!'ROUTING_ACTIVE'.equals(orderRouting.statusId)">
+                <return error="true" message="Order routing ${orderRouting.routingName} [${orderRoutingId}] is not active"/>
+            </if>
+            <entity-find-related-one value-field="orderRouting" relationship-name="co.hotwax.order.routing.OrderRoutingGroup" to-value-field="orderRoutingGroup" cache="true"/>
+            <entity-find entity-name="co.hotwax.order.routing.OrderRoutingRule" list="orderRoutingRules" cache="true">
+                <econditions>
+                    <econdition field-name="orderRoutingId" from="orderRouting.orderRoutingId"/>
+                    <econdition field-name="statusId" value="RULE_ACTIVE"/>
+                </econditions>
+                <order-by field-name="sequenceNum"/>
+            </entity-find>
+            <script>cartTotalQuantity = items.sum { item -> item.quantity ?: 0}</script>
+            <set field="totalAssignedQty" value="0" type="Integer"/>
+            <iterate list="orderRoutingRules" entry="orderRoutingRule">
+                <service-call name="co.hotwax.shopify.inventory.InventoryServices.run#InventoryRoutingRule"
+                        in-map="[productStoreId: orderRoutingGroup.productStoreId,routingRuleId: orderRoutingRule.routingRuleId, items: items,
+                                            latitude: latitude, longitude: longitude]"
+                        transaction="force-new"
+                        ignore-error="true" out-map="inventoryRuleResult"/>
+                <set field="suggestedFulfillmentLocations" from="inventoryRuleResult.suggestedFulfillmentLocations" type="List"/>
+                <set field="assignedItems" from="[]"/>
+                <if condition="suggestedFulfillmentLocations">
+                    <iterate list="suggestedFulfillmentLocations" entry="suggestedFulfillmentLocation">
+                        <set field="assignedItem" from="assignedItems.find { it.productId == suggestedFulfillmentLocation.productId }"/>
+                        <if condition="assignedItem">
+                            <set field="assignedItem.routedItemQty" from="assignedItem.routedItemQty + suggestedFulfillmentLocation.routedItemQty" type="Integer"/>
+                            <if condition="assignedItem.distance &lt; suggestedFulfillmentLocation.distance">
+                                <set field="assignedItem.distance" from="suggestedFulfillmentLocation.distance" type="Double"/>
+                                <set field="assignedItem.facilityTypeId" from="suggestedFulfillmentLocation.facilityTypeId"/>
+                                <set field="assignedItem.facilityId" from="suggestedFulfillmentLocation.facilityId"/>
+                            </if>
+                        <else>
+                            <set field="assignedItem" from="[:]"/>
+                            <set field="assignedItem.routedItemQty" from="suggestedFulfillmentLocation.routedItemQty" type="Integer"/>
+                            <set field="assignedItem.distance" from="suggestedFulfillmentLocation.distance" type="Double"/>
+                            <set field="assignedItem.productId" from="suggestedFulfillmentLocation.productId"/>
+                            <set field="assignedItem.itemQty" from="suggestedFulfillmentLocation.itemQty" type="Integer"/>
+                            <set field="assignedItem.facilityTypeId" from="suggestedFulfillmentLocation.facilityTypeId"/>
+                            <set field="assignedItem.facilityId" from="suggestedFulfillmentLocation.facilityId"/>
+                        </else>
+                    </if>
+                        <set field="totalAssignedQty" from="totalAssignedQty + suggestedFulfillmentLocation.routedItemQty" type="Integer"/>
+                        <script>assignedItems.add(assignedItem)</script>
+                    </iterate>
+                </if>
+                <script><![CDATA[
+                    items.removeAll { item ->
+                        // Find the matching assignedItem by productId (or any other identifier)
+                        def assignedItem = assignedItems.find { it.productId == item.hotwaxProductId }
+                        if (assignedItem && assignedItem.routedItemQty != item.quantity) {
+                            // If routedItemQty is different, adjust the item.quantity
+                            item.quantity = item.quantity - assignedItem.routedItemQty
+                            return false  // Do not remove the item
+                        } else if (assignedItem && assignedItem.routedItemQty == item.quantity) {
+                            // If routedItemQty equals qty, remove the item from the list
+                            return true  // Remove the item
+                        }
+                        return false  // Do not remove the item if there's no matching assignedItem
+                    }
+                ]]></script>
+                <!-- If all items inventory found, do not run next order routing rule and routing -->
+                <if condition="!items">
+                    <set field="runNextRouting" value="false" type="Boolean"/>
+                    <break/>
+                </if>
+            </iterate>
+            <!-- If inventory not found for all the items in cart,
+                then empty out the assignedItems list, so that next routing will execute the rule for all the cart items -->
+            <if condition="(totalAssignedQty != cartTotalQuantity)">
+                <set field="runNextRouting" value="true" type="Boolean"/>
+                <set field="assignedItems" value="[:]"/>
+            </if>
+        </actions>
+    </service>
+
+    <service verb="run" noun="InventoryRoutingRule">
+        <description>
+            To dynamically fetch inventory for cart items based on specific routing rule configurations.
+            These rules can encompass various criteria such as geographic location, inventory levels, delivery times, and cost efficiency.
+        </description>
+        <in-parameters>
+            <parameter name="routingRuleId" required="true"/>
+            <parameter name="productStoreId" required="true"/>
+            <parameter name="items" type="List" required="true"/>
+            <parameter name="latitude"/>
+            <parameter name="longitude"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="suggestedFulfillmentLocations" type="List"/>
+        </out-parameters>
+        <actions>
+            <entity-find-one entity-name="co.hotwax.order.routing.OrderRoutingRule" value-field="orderRoutingRule" cache="true"/>
+            <if condition="!orderRoutingRule">
+                <return error="true" message="No order routing rule found for id ${routingRuleId}"/>
+            </if>
+            <if condition="!'RULE_ACTIVE'.equals(orderRoutingRule.statusId)">
+                <return error="true" message="Order routing ${orderRoutingRule.ruleName} [${routingRuleId}] is not active"/>
+            </if>
+            <log message="Executing order routing rule ${orderRoutingRule.ruleName?:''} [${routingRuleId}] for cart items ${items}"/>
+
+            <entity-find entity-name="co.hotwax.order.routing.OrderRoutingRuleInvCond" list="inventoryConditions" cache="true">
+                <econdition field-name="routingRuleId" from="routingRuleId"/>
+                <order-by field-name="sequenceNum"/>
+            </entity-find>
+            <set field="inventoryFilterMap" from="[:]" />
+            <filter-map-list list="inventoryConditions" to-list="filterConditions">
+                <field-map field-name="conditionTypeEnumId" value="ENTCT_FILTER"/>
+            </filter-map-list>
+            <iterate list="filterConditions" entry="filterCondition">
+                <script>
+                    inventoryFilterMap.put(filterCondition.fieldName, filterCondition)
+                </script>
+            </iterate>
+            <entity-find entity-name="co.hotwax.shopify.ShopifyShopProduct" list="shopProducts" cache="true">
+                <econdition field-name="shopifyProductId" operator="in" from="items.variant_id"/>
+            </entity-find>
+            <set field="cartItemQuantity" value="0" type="Integer"/>
+            <iterate list="items" entry="cartItem">
+                <filter-map-list list="shopProducts" to-list="shopifyShopProducts">
+                    <field-map field-name="shopifyProductId" from="cartItem.variant_id"/>
+                </filter-map-list>
+                <set field="shopifyShopProduct" from="shopifyShopProducts[0]"/>
+                <if condition="shopifyShopProduct">
+                    <set field="cartItem.hotwaxProductId" from="shopifyShopProduct.productId"/>
+                <else>
+                    <return error="true" message="Shopify product ${cartItem.variant_id} not found"/>
+                </else>
+                </if>
+                <set field="cartItemQuantity" from="cartItemQuantity + cartItem.quantity" type="Integer"/>
+            </iterate>
+            <!-- Set the hard coded order id to support the sql -->
+            <set field="orderId" value="DUMMY"/>
+            <!-- Prepare the custom SQL to leverage the existing SQL used for the brokering logic.
+            Although we could update and refactor the SQL for better optimization, this would introduce more testing requirements and increase complexity.
+            Therefore, we have decided to use the legacy SQL, injecting the custom order_item SQL to support the existing logic without significant changes.
+            -->
+            <script><![CDATA[
+                def customOrderItemSql = items.withIndex().collect() { cartItem, index ->
+                    "select '${cartItem.hotwaxProductId}' as product_id, '${orderId}' as order_id, '${index +1}' as order_item_seq_id, '${cartItem.quantity}' as quantity, '${productStoreId}' as product_store_id"
+                }.join(" union ")
+                customOrderItem = "(${customOrderItemSql})"
+            ]]></script>
+            <!--
+                Conversion factors for distance measurements from meters:
+                1 meter = 0.001 kilometers (to convert meters to kilometers, multiply by 0.001).
+                1 meter = 0.000621371 miles (to convert meters to miles, multiply by 0.000621371).
+            -->
+            <set field="conversionFactor" value="0.000621371"/>
+            <set field="measurementSystem" from="inventoryFilterMap?.measurementSystem?.fieldValue" default-value="IMPERIAL"/>
+            <if condition="measurementSystem.equals('METRIC')">
+                <set field="conversionFactor" value="0.001"/>
+            </if>
+            <filter-map-list list="inventoryConditions" to-list="sortFields">
+                <field-map field-name="conditionTypeEnumId" value="ENTCT_SORT_BY"/>
+            </filter-map-list>
+            <order-map-list list="sortFields">
+                <order-by field-name="sequenceNum"/>
+            </order-map-list>
+            <set field="brokeringOffset" from="ZonedDateTime.now().getOffset()"/>
+            <!--  We have to get the ofbiz group name, used ProductStore entity to get the OFBiz group name-->
+            <set field="productStore" from="ec.entity.getEntityDefinition('org.apache.ofbiz.product.store.ProductStore')"/>
+            <set field="inventorySortByList" from="sortFields != null ? sortFields.fieldName:[]" type="List"/>
+            <set field="templateLoc" value="component://order-routing/sql/CartItemInventoryCheck.sql.ftl"/>
+            <set field="suggestedFulfillmentLocations" from="[]"/>
+            <script><![CDATA[
+                Writer writer = new StringWriter()
+                ec.resourceFacade.template(templateLoc, writer)
+                //ec.logger.info("======writer==${writer}==")
+                ec.getEntity().getConnection(productStore.getEntityGroupName()).withCloseable ({ java.sql.Connection con ->
+                con.createStatement().withCloseable({ statement ->
+                    statement.executeQuery(writer.toString()).withCloseable({resultSet ->
+                        while (resultSet.next()) {
+                            suggestedFulfillmentLocations.add([
+                                orderId: resultSet.getString('ORDER_ID'),
+                                orderItemSeqId: resultSet.getString('ORDER_ITEM_SEQ_ID'),
+                                productId: resultSet.getString('PRODUCT_ID'),
+                                shipGroupTotalQty: resultSet.getInt('ship_group_total_qty'),
+                                itemQty: resultSet.getInt('ITEM_QTY'),
+                                routedItemQty: resultSet.getInt('ROUTED_ITEM_QTY'),
+                                facilityTypeId: resultSet.getString('FACILITY_TYPE_ID'),
+                                facilityId: resultSet.getString('FACILITY_ID'),
+                                distance: resultSet.getDouble('distance')
+                                ])
+                            }
+                        })
+                    })
+                })
+            ]]></script>
+        </actions>
+    </service>
+    <service verb="prepare" noun="ShipmentMethodRates">
+        <in-parameters>
+            <parameter name="mixedCart" type="Boolean" default-value="false"/>
+            <parameter name="mixedCartSuffix"/>
+            <parameter name="productStoreId"/>
+            <parameter name="shipmentMethodTypeId" required="true"/>
+            <parameter name="currency"/>
+            <parameter name="assignedItems" type="List"/>
+            <parameter name="timeZone"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="rate" type="Map"/>
+        </out-parameters>
+        <actions>
+            <script><![CDATA[
+                // Filter out items where distance is present and greater than 0
+                def filteredItems = assignedItems.findAll { item ->
+                    item.distance != null && item.distance > 0
+                }
+                // Sort the filtered items by distance in descending order and get the first one
+                if (filteredItems) {
+                    itemWithLargestDistance = (filteredItems.sort { -it.distance })?.first()
+                }
+            ]]></script>
+            <entity-find entity-name="org.apache.ofbiz.shipment.shipment.ShipmentCostEstimate" list="shipmentCostEstimates" cache="false">
+                <econdition field-name="shipmentMethodTypeId" from="shipmentMethodTypeId"/>
+                <econdition field-name="carrierPartyId" value="_NA_"/>
+                <econdition field-name="carrierRoleTypeId" value="CARRIER"/>
+                <econdition field-name="productStoreId" from="productStoreId"/>
+            </entity-find>
+            <if condition="shipmentCostEstimates">
+                <set field="shipmentCostEstimate" from="shipmentCostEstimates[0]"/>
+                <set field="costEstimate" from="shipmentCostEstimate.orderFlatPrice" type="BigDecimal"/>
+            </if>
+
+            <entity-find-one entity-name="org.apache.ofbiz.shipment.shipment.CarrierShipmentMethod" value-field="carrierShipmentMethod" cache="true">
+                <field-map field-name="shipmentMethodTypeId" from="shipmentMethodTypeId"/>
+                <field-map field-name="partyId" value="_NA_"/>
+                <field-map field-name="roleTypeId" value="CARRIER"/>
+            </entity-find-one>
+            <set field="deliveryDays" from="carrierShipmentMethod?.deliveryDays" type="Integer"/>
+
+            <entity-find-one entity-name="org.apache.ofbiz.shipment.shipment.ShipmentMethodType" value-field="shipmentMethodType" cache="true">
+                <field-map field-name="shipmentMethodTypeId" from="shipmentMethodTypeId"/>
+            </entity-find-one>
+            <set field="rate" from="[:]"/>
+            <set field="serviceCode" from="carrierShipmentMethod.carrierServiceCode" default-value="${shipmentMethodTypeId}"/>
+            <set field="rate.total_price" from="costEstimate? costEstimate * 100 :00" type="String"/>
+            <set field="rate.service_name" from="mixedCart? shipmentMethodType?.description + ' &amp; In-Store Pick Up' : shipmentMethodType?.description"/>
+            <set field="rate.service_code" from="serviceCode"/>
+            <set field="rate.currency" from="currency"/>
+            <script><![CDATA[
+                import java.time.format.DateTimeFormatter
+                ZonedDateTime queryDateTime = ZonedDateTime.now()
+                if (timeZone) {
+                    queryDateTime = queryDateTime.withZoneSameInstant(ZoneId.of(timeZone))
+                }
+                LocalDate currentDate = queryDateTime.toLocalDate()
+                LocalTime currentTime = queryDateTime.toLocalTime()
+
+                // Initialize lead time in hours
+                int leadTimeHours = 0
+                int distanceLeadTimeDays = 0
+                def shipmentMethodIds = [shipmentMethodType.shipmentMethodTypeId]
+                // Use safe navigation operator to check for non-null parentTypeId and add it if present
+                if (shipmentMethodType.parentTypeId){
+                     shipmentMethodIds.add(shipmentMethodType.parentTypeId)
+                }
+                // Calculate operational lead time
+                // Check day of the week
+                DayOfWeek dayOfWeek = currentDate.dayOfWeek
+                if (shipmentMethodIds.contains('STANDARD')) {
+                    // Distance lead time based on distance
+                    if (distance < 150) {
+                        distanceLeadTimeDays = 1
+                    } else if (distance < 300) {
+                        distanceLeadTimeDays = 2
+                    } else if (distance < 600) {
+                        distanceLeadTimeDays = 3
+                    } else {
+                        distanceLeadTimeDays = 5
+                    }
+                    // Add distance lead time
+                    leadTimeHours += distanceLeadTimeDays * 24
+                    if (dayOfWeek == DayOfWeek.SATURDAY) {
+                        leadTimeHours += (itemWithLargestDistance?.facilityTypeId == 'WAREHOUSE' ? 24 : 48) // +24 for Warehouse, +48 for Store
+                    } else if (dayOfWeek == DayOfWeek.SUNDAY) {
+                        leadTimeHours += 48 // +48 for Sunday
+                    } else {
+                        leadTimeHours += 24 // +24 for Mon - Fri
+                    }
+                } else {
+                    distanceLeadTimeDays
+                    leadTimeHours += distanceLeadTimeDays * 24
+                    if (dayOfWeek == DayOfWeek.SATURDAY) {
+                        leadTimeHours += (itemWithLargestDistance?.facilityTypeId == 'WAREHOUSE' ? 0 : 48) // +0 for Warehouse, +48 for Store
+                    } else if (dayOfWeek == DayOfWeek.SUNDAY) {
+                        leadTimeHours += 24 // +24 for Sunday
+                    }
+                    if (currentTime.isAfter(LocalTime.NOON)) {
+                        leadTimeHours += 24 // Ship next day if after 12 PM
+                    }
+                }
+
+                // Sum total lead time and return the estimated delivery date
+                ZonedDateTime estimatedDeliveryDate = queryDateTime.plusHours(leadTimeHours)
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss Z")
+                String formattedDateTime = estimatedDeliveryDate.format(formatter)
+
+                DateTimeFormatter descFormatter = DateTimeFormatter.ofPattern("EEE, dd")
+                rate.put("description", "Est. delivery by ${estimatedDeliveryDate.format(descFormatter)}${mixedCart? ' and ' + mixedCartSuffix: ''}")
+
+                rate.put("min_delivery_date", formattedDateTime)
+                rate.put("max_delivery_date", formattedDateTime)
+            ]]></script>
+        </actions>
+    </service>
+</services>
