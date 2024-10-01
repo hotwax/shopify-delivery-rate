@@ -165,6 +165,9 @@
                          <script>
                              geoPointCache.put(geoCodeResult.cacheKey, geoPoint);
                          </script>
+                     <else>
+                         <log level="warn" message="Lat/Long not found for county code:${rate?.destination?.country} and postalCode:${rate?.destination?.postal_code}"/>
+                     </else>
                      </if>
                  </else>
                 </if>
