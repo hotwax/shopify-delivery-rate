@@ -140,9 +140,23 @@
                 <return type="warning" message="No order routing configuration found for the specified routing group ${orderRoutingGroup.groupName?:''} [${routingGroupId}]."/>
             </if>
             <log message="Running inventory routing for ${orderRoutingGroup.groupName} [${routingGroupId}] routing group."/>
-            <!--TODO: Get the lat/long from postal code solr if not found in destination address-->
-            <set field="longitude" from="rate?.destination?.longitude"/>
-            <set field="latitude" from="rate?.destination?.latitude"/>
+            <if condition="(rate?.destination?.longitude &amp;&amp; rate?.destination?.latitude)">
+                <set field="longitude" from="rate?.destination?.longitude"/>
+                <set field="latitude" from="rate?.destination?.latitude"/>
+            <else-if condition="rate?.destination?.country &amp;&amp; rate?.destination?.postal_code">
+                <service-call name="co.hotwax.shopify.inventory.InventoryServices.get#GeoPointForPostalCode"
+                        in-map="[countryCode: rate?.destination?.country, postalCode: rate?.destination?.postal_code]"
+                        ignore-error="true" out-map="geoCodeResult" transaction="force-new"/>
+
+                <script>ec.message.clearAll()</script>
+                <set field="geoPoint" from="geoCodeResult?.geoPoint" type="NewMap"/>
+                <set field="longitude" from="geoPoint?.longitude"/>
+                <set field="latitude" from="geoPoint?.latitude"/>
+            </else-if>
+            </if>
+            <if condition="!(longitude &amp;&amp; latitude)">
+                <log level="warn" message="Lat/Ling data missing for rate api ${rate}"/>
+            </if>
             <set field="items" from="rate?.items" type="List"/>
             <script><![CDATA[
                 def bopisMethods = items.collect { item ->
@@ -400,7 +414,7 @@
             <!--  We have to get the ofbiz group name, used ProductStore entity to get the OFBiz group name-->
             <set field="productStore" from="ec.entity.getEntityDefinition('org.apache.ofbiz.product.store.ProductStore')"/>
             <set field="inventorySortByList" from="sortFields != null ? sortFields.fieldName:[]" type="List"/>
-            <set field="templateLoc" value="component://order-routing/sql/CartItemInventoryCheck.sql.ftl"/>
+            <set field="templateLoc" value="component://shopify-delivery/sql/CartItemInventoryCheck.sql.ftl"/>
             <set field="suggestedFulfillmentLocations" from="[]"/>
             <script><![CDATA[
                 Writer writer = new StringWriter()
@@ -450,6 +464,7 @@
                 // Sort the filtered items by distance in descending order and get the first one
                 if (filteredItems) {
                     itemWithLargestDistance = (filteredItems.sort { -it.distance })?.first()
+                    distance = itemWithLargestDistance.distance
                 }
             ]]></script>
             <entity-find entity-name="org.apache.ofbiz.shipment.shipment.ShipmentCostEstimate" list="shipmentCostEstimates" cache="false">
@@ -544,5 +559,15 @@
                 rate.put("max_delivery_date", formattedDateTime)
             ]]></script>
         </actions>
+    </service>
+    <service verb="get" noun="GeoPointForPostalCode" type="oms-rest" location="service/getGeoPointForPostalCode" method="post">
+        <in-parameters>
+            <parameter name="postalCode" required="true"/>
+            <parameter name="countryCode" required="true"/>
+        </in-parameters>
+        <out-parameters>
+            <parameter name="geoPoint" type="Map"/>
+            <parameter name="cacheKey" type="String"/>
+        </out-parameters>
     </service>
 </services>

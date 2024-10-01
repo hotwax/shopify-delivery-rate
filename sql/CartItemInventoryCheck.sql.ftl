@@ -80,7 +80,7 @@
   x.*
   from
   (select oisd.order_id,oisd.ORDER_ITEM_SEQ_ID,oisd.product_id,<#if invenoryGroupFiter?has_content>fgm.SEQUENCE_NUM as facilitySequence,fgm.FACILITY_GROUP_ID,</#if>f.facility_type_id,
-  ifnull(ST_Distance_Sphere(point(fpa.LONGITUDE, fpa.LATITUDE),point('${longitude}','${latitude}')), 0) * ${conversionFactor} as distance,
+  ifnull(ST_Distance_Sphere(point(fpa.LONGITUDE, fpa.LATITUDE),point('${longitude!}','${latitude!}')), 0) * ${conversionFactor} as distance,
   pf.last_inventory_count as ATP,pf.minimum_stock, (ifnull(pf.last_inventory_count,0)-ifnull(pf.MINIMUM_STOCK,0)) as total_inv,round(ifnull(pf.last_inventory_count, 0)/(oisd.quantity)*100,2) as availablity_pct,pf.facility_id,pf.ALLOW_BROKERING,
   '${cartItemQuantity}' as ship_group_total_qty,
   oisd.quantity as item_qty,
