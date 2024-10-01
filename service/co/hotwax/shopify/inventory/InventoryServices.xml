@@ -227,9 +227,10 @@
                                 <econdition field-name="fieldName" value="shipmentMethodTypeId"/>
                             </entity-find>
                             <set field="orderFilterCondition" from="orderFilterConditions[0]"/>
+                            <set field="shipmentMethodConditionMet" value="true" type="Boolean"/>
+                            <if condition="orderFilterCondition">
                             <script>
-                                def filterConditionValues = (orderFilterCondition?.fieldValue).split(',') as List
-                                boolean shipmentMethodConditionMet = true
+                                def filterConditionValues = (orderFilterCondition?.fieldValue)?.split(',') as List
                                 if (filterConditionValues) {
                                     def filterOperator = org.moqui.impl.entity.EntityConditionFactoryImpl.getComparisonOperator(orderFilterCondition?.operator);
                                     shipmentMethodConditionMet = false
@@ -241,6 +242,7 @@
                                     }
                                 }
                             </script>
+                            </if>
                             <if condition="!shipmentMethodConditionMet">
                                 <log level="warn" message="Shipment condition not met for order routing ${orderRouting.orderRoutingId}"/>
                                 <continue/>
@@ -495,6 +497,7 @@
                     item.distance != null && item.distance > 0
                 }
                 // Sort the filtered items by distance in descending order and get the first one
+                distance = null;
                 if (filteredItems) {
                     itemWithLargestDistance = (filteredItems.sort { -it.distance })?.first()
                     distance = itemWithLargestDistance.distance
