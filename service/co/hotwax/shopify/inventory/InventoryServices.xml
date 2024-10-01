@@ -227,8 +227,22 @@
                                 <econdition field-name="fieldName" value="shipmentMethodTypeId"/>
                             </entity-find>
                             <set field="orderFilterCondition" from="orderFilterConditions[0]"/>
-                            <set field="conditionSLAs" from="[orderFilterCondition?.fieldValue]" type="List"/>
-                            <if condition="!(!conditionSLAs || !conditionSLAs.intersect(slaIds).isEmpty())">
+                            <script>
+                                def filterConditionValues = (orderFilterCondition?.fieldValue).split(',') as List
+                                boolean shipmentMethodConditionMet = true
+                                if (filterConditionValues) {
+                                    def filterOperator = org.moqui.impl.entity.EntityConditionFactoryImpl.getComparisonOperator(orderFilterCondition?.operator);
+                                    shipmentMethodConditionMet = false
+                                    slaIds.any { sla ->
+                                        if (org.moqui.impl.entity.EntityConditionFactoryImpl.compareByOperator(sla, filterOperator, filterConditionValues)) {
+                                            shipmentMethodConditionMet = true
+                                            return true  // This will break the loop
+                                        }
+                                    }
+                                }
+                            </script>
+                            <if condition="!shipmentMethodConditionMet">
+                                <log level="warn" message="Shipment condition not met for order routing ${orderRouting.orderRoutingId}"/>
                                 <continue/>
                             </if>
                             <service-call name="co.hotwax.shopify.inventory.InventoryServices.run#InventoryRouting"
@@ -554,7 +568,7 @@
                         leadTimeHours += 24 // +24 for Mon - Fri
                     }
                 } else {
-                    distanceLeadTimeDays
+                    distanceLeadTimeDays = deliveryDays
                     leadTimeHours += distanceLeadTimeDays * 24
                     if (dayOfWeek == DayOfWeek.SATURDAY) {
                         leadTimeHours += (itemWithLargestDistance?.facilityTypeId == 'WAREHOUSE' ? 0 : 48) // +0 for Warehouse, +48 for Store
