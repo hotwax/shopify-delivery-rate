@@ -188,7 +188,7 @@
                     !(item.properties && item.properties._pickupstore)
                 }
                 // Ensure that if 'quantity' is null, it's treated as 0
-                cartTotalQuantity = items.sum { item -> item.quantity ?: 0}
+                cartTotalQuantity = items?.sum { item -> item.quantity ?: 0}
             ]]></script>
             <set field="pickupDescription" from="bopisMethods?.join(',')"/>
             <!-- If there is no delivery items -->

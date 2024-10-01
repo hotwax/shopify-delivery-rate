@@ -108,7 +108,7 @@ class ShopifyRequestFilter implements Filter {
         //We should use ShopifyShopAndConfig but there is an issue with encrypted field read
         */
         for (EntityValue systemMessageRemote in systemMessageRemoteList) {
-            boolean isHmacVerified = verifyHmac(requestBody, hmac, systemMessageRemote.getString("sharedSecret"), 'Base64');
+            boolean isHmacVerified = verifyHmac(requestBody, hmac, systemMessageRemote.getString("sendSharedSecret"), 'Base64');
 
             // If the hmac matched with the calculatedHmac, break the loop and return
             if (isHmacVerified) {
