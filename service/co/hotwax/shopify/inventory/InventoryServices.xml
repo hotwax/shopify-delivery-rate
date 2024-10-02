@@ -400,14 +400,22 @@
                     inventoryFilterMap.put(filterCondition.fieldName, filterCondition)
                 </script>
             </iterate>
+            <!--
             <entity-find entity-name="co.hotwax.shopify.ShopifyShopProduct" list="shopProducts" cache="true">
                 <econdition field-name="shopifyProductId" operator="in" from="items.variant_id"/>
             </entity-find>
+            -->
             <set field="cartItemQuantity" value="0" type="Integer"/>
             <iterate list="items" entry="cartItem">
+                <!--
+                filter-map-list not working as expected
                 <filter-map-list list="shopProducts" to-list="shopifyShopProducts">
                     <field-map field-name="shopifyProductId" from="cartItem.variant_id"/>
                 </filter-map-list>
+                -->
+                <entity-find entity-name="co.hotwax.shopify.ShopifyShopProduct" list="shopifyShopProducts" cache="true">
+                    <econdition field-name="shopifyProductId" from="cartItem.variant_id"/>
+                </entity-find>
                 <set field="shopifyShopProduct" from="shopifyShopProducts[0]"/>
                 <if condition="shopifyShopProduct">
                     <set field="cartItem.hotwaxProductId" from="shopifyShopProduct.productId"/>
@@ -501,6 +509,7 @@
                 if (filteredItems) {
                     itemWithLargestDistance = (filteredItems.sort { -it.distance })?.first()
                     distance = itemWithLargestDistance.distance
+                    ec.logger.info("Assigned item: ${itemWithLargestDistance}")
                 }
             ]]></script>
             <entity-find entity-name="org.apache.ofbiz.shipment.shipment.ShipmentCostEstimate" list="shipmentCostEstimates" cache="false">
