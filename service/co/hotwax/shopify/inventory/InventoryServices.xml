@@ -118,6 +118,9 @@
         </out-parameters>
         <actions>
             <set field="rates" from="[]"/>
+            <if condition="rate?.origin?.country != 'US'">
+                <return message="Internation shipping"/>
+            </if>
             <!-- validate the routing group and product store association -->
             <entity-find-one entity-name="co.hotwax.order.routing.OrderRoutingGroup" value-field="orderRoutingGroup" cache="true"/>
 
