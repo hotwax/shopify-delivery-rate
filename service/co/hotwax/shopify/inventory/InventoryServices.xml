@@ -261,7 +261,7 @@
                             </if>
                         </iterate>
                         <service-call name="co.hotwax.shopify.inventory.InventoryServices.prepare#ShipmentMethodRates"
-                                in-map="[mixedCart: bopisMethods?true:false, shipmentMethodTypeId:shipmentMethodType.shipmentMethodTypeId,
+                                in-map="[mixedCart: bopisMethods?true:false, shipmentMethodTypeId:shipmentMethodType.shipmentMethodTypeId,carrierPartyId: carrierPartyId,
                                      assignedItems: assignedItems, currency: rate.currency, mixedCartSuffix: pickupDescription, productStoreId: orderRoutingGroup.productStoreId, timeZone: timeZone]"
                                 out-map="rateResult" />
                         <if condition="rateResult.rate">
@@ -493,6 +493,7 @@
             <parameter name="mixedCart" type="Boolean" default-value="false"/>
             <parameter name="mixedCartSuffix"/>
             <parameter name="productStoreId"/>
+            <parameter name="carrierPartyId" default="_NA_"/>
             <parameter name="shipmentMethodTypeId" required="true"/>
             <parameter name="currency"/>
             <parameter name="assignedItems" type="List"/>
@@ -517,7 +518,7 @@
             ]]></script>
             <entity-find entity-name="org.apache.ofbiz.shipment.shipment.ShipmentCostEstimate" list="shipmentCostEstimates" cache="false">
                 <econdition field-name="shipmentMethodTypeId" from="shipmentMethodTypeId"/>
-                <econdition field-name="carrierPartyId" value="_NA_"/>
+                <econdition field-name="carrierPartyId" from="carrierPartyId"/>
                 <econdition field-name="carrierRoleTypeId" value="CARRIER"/>
                 <econdition field-name="productStoreId" from="productStoreId"/>
             </entity-find>
@@ -528,7 +529,7 @@
 
             <entity-find-one entity-name="org.apache.ofbiz.shipment.shipment.CarrierShipmentMethod" value-field="carrierShipmentMethod" cache="true">
                 <field-map field-name="shipmentMethodTypeId" from="shipmentMethodTypeId"/>
-                <field-map field-name="partyId" value="_NA_"/>
+                <field-map field-name="partyId" from="carrierPartyId"/>
                 <field-map field-name="roleTypeId" value="CARRIER"/>
             </entity-find-one>
             <set field="deliveryDays" from="carrierShipmentMethod?.deliveryDays" type="Integer"/>
