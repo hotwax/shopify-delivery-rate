@@ -536,7 +536,8 @@
             <set field="rate" from="[:]"/>
             <set field="serviceCode" from="carrierShipmentMethod.carrierServiceCode" default-value="${shipmentMethodTypeId}"/>
             <set field="rate.total_price" from="costEstimate? costEstimate * 100 :00" type="String"/>
-            <set field="rate.service_name" from="mixedCart? shipmentMethodType?.description + ' &amp; In-Store Pick Up' : shipmentMethodType?.description"/>
+<!--            <set field="rate.service_name" from="mixedCart? shipmentMethodType?.description + ' &amp; In-Store Pick Up' : shipmentMethodType?.description"/>-->
+            <set field="rate.service_name" from="shipmentMethodType?.description"/>
             <set field="rate.service_code" from="serviceCode"/>
             <set field="rate.currency" from="currency"/>
             <script><![CDATA[
