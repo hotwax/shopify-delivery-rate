@@ -118,7 +118,7 @@
         </out-parameters>
         <actions>
             <set field="rates" from="[]"/>
-            <if condition="rate?.origin?.country != 'US'">
+            <if condition="rate?.destination?.country != 'US'">
                 <return message="Internation shipping"/>
             </if>
             <!-- validate the routing group and product store association -->
