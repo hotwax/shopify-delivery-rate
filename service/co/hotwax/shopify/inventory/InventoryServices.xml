@@ -506,7 +506,7 @@
             <script><![CDATA[
                 // Filter out items where distance is present and greater than 0
                 def filteredItems = assignedItems.findAll { item ->
-                    item.distance != null && item.distance > 0
+                    item?.get('distance') != null && item.get('distance') > 0
                 }
                 // Sort the filtered items by distance in descending order and get the first one
                 distance = null;
