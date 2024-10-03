@@ -93,9 +93,13 @@ class ShopifyRequestFilter implements Filter {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST, "The Request Body is empty for Shopify request")
             return
         }
-        request.setAttribute("payload", ContextJavaUtil.jacksonMapper.readValue(requestBody, Map.class))
-
-
+        //request.setAttribute("payload", ContextJavaUtil.jacksonMapper.readValue(requestBody, Map.class))
+        // Parse request body JSON and put each entry as a request attribute
+        Map<String, Object> payloadMap = ContextJavaUtil.jacksonMapper.readValue(requestBody, Map.class)
+        payloadMap.each { key, value ->
+            request.setAttribute(key, value)
+        }
+        
         EntityList systemMessageRemoteList = ec.entityFacade.find("moqui.service.message.SystemMessageRemote")
                 .condition("sendUrl", EntityCondition.ComparisonOperator.LIKE, "%"+shopDomain+"%")
                 .condition("sendSharedSecret", EntityCondition.ComparisonOperator.NOT_EQUAL, null)

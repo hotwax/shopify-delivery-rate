@@ -360,7 +360,7 @@
                 then empty out the assignedItems list, so that next routing will execute the rule for all the cart items -->
             <if condition="(totalAssignedQty != cartTotalQuantity)">
                 <set field="runNextRouting" value="true" type="Boolean"/>
-                <set field="assignedItems" value="[:]"/>
+                <set field="assignedItems" from="[]"/>
             </if>
         </actions>
     </service>
