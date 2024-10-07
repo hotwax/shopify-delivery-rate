@@ -599,6 +599,11 @@
 
                 // Sum total lead time and return the estimated delivery date
                 ZonedDateTime estimatedDeliveryDate = queryDateTime.plusHours(leadTimeHours)
+                // Check if estimated delivery date falls on a Sunday
+                if (estimatedDeliveryDate.dayOfWeek == DayOfWeek.SUNDAY) {
+                    // Add 1 day if it's Sunday
+                    estimatedDeliveryDate = estimatedDeliveryDate.plusDays(1)
+                }
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss Z")
                 String formattedDateTime = estimatedDeliveryDate.format(formatter)
 
